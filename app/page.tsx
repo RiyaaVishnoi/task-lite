@@ -18,7 +18,7 @@ type Profile = { id: string; email: string | null };
 type Comment = { id: string; task_id: string; user_id: string; content: string; created_at: string };
 type Filter = 'all' | 'active' | 'done' | 'assignedToMe';
 
-const BUCKET = 'attachments'; // change to 'attahcments' if your bucket name is misspelled
+const BUCKET = 'attachments'; // change to 'attahcments' if your bucket is misspelled
 
 export default function Page() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export default function Page() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState('');
   const [assigneeId, setAssigneeId] = useState<string | ''>('');
-  const [dueLocal, setDueLocal] = useState<string>(''); // HTML datetime-local
+  const [dueLocal, setDueLocal] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -41,7 +41,6 @@ export default function Page() {
   const tasksChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const commentsChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // ---- helpers ----
   function notify(msg: string) {
     try { if (Notification?.permission === 'granted') new Notification(msg); } catch {}
   }
@@ -54,7 +53,7 @@ export default function Page() {
     return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
   }
 
-  // session gate
+  // session
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -72,16 +71,12 @@ export default function Page() {
   async function loadTasks() {
     setLoading(true);
     setErr(null);
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
     if (error) { setErr(error.message); setTasks([]); }
     else setTasks((data ?? []) as Task[]);
     setLoading(false);
   }
 
-  // init data + realtime + notifications
   useEffect(() => {
     if (!sessionUserId) return;
     (async () => {
@@ -90,16 +85,15 @@ export default function Page() {
         Notification.requestPermission().catch(() => {});
       }
       const ch = supabase
-        .channel('tasks-rt-v4')
+        .channel('tasks-rt-v5')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, async () => { await loadTasks(); })
         .subscribe();
       tasksChannelRef.current = ch;
     })();
-
     return () => { if (tasksChannelRef.current) supabase.removeChannel(tasksChannelRef.current); };
   }, [sessionUserId]);
 
-  // comments loader + realtime for open task
+  // comments loader + realtime
   async function loadComments(taskId: string) {
     setCommentsLoading(true);
     const { data, error } = await supabase
@@ -111,13 +105,9 @@ export default function Page() {
     else setComments((data ?? []) as Comment[]);
     setCommentsLoading(false);
   }
-
   useEffect(() => {
     if (!openCommentsFor) {
-      if (commentsChannelRef.current) {
-        supabase.removeChannel(commentsChannelRef.current);
-        commentsChannelRef.current = null;
-      }
+      if (commentsChannelRef.current) { supabase.removeChannel(commentsChannelRef.current); commentsChannelRef.current = null; }
       return;
     }
     const taskId = openCommentsFor.id;
@@ -125,30 +115,21 @@ export default function Page() {
       await loadComments(taskId);
       const ch = supabase
         .channel(`comments-rt-${taskId}`)
-        .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'comments', filter: `task_id=eq.${taskId}` },
-          async () => { await loadComments(taskId); }
-        )
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `task_id=eq.${taskId}` },
+          async () => { await loadComments(taskId); })
         .subscribe();
       commentsChannelRef.current = ch;
     })();
-
-    return () => {
-      if (commentsChannelRef.current) {
-        supabase.removeChannel(commentsChannelRef.current);
-        commentsChannelRef.current = null;
-      }
-    };
+    return () => { if (commentsChannelRef.current) { supabase.removeChannel(commentsChannelRef.current); commentsChannelRef.current = null; } };
   }, [openCommentsFor]);
 
-  // ---- actions ----
+  // actions
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
     if (!sessionUserId) return;
     const t = title.trim();
     if (!t) return;
 
-    // upload (optional)
     let file_url: string | null = null;
     try {
       if (file) {
@@ -165,7 +146,6 @@ export default function Page() {
 
     const due_at = toISOFromLocal(dueLocal);
 
-    // optimistic
     const temp: Task = {
       id: crypto.randomUUID(),
       title: t,
@@ -180,20 +160,10 @@ export default function Page() {
     setTitle(''); setAssigneeId(''); setFile(null); setDueLocal('');
 
     const { error } = await supabase.from('tasks').insert({
-      title: t,
-      file_url,
-      user_id: sessionUserId,
-      assignee_id: assigneeId || null,
-      due_at,
+      title: t, file_url, user_id: sessionUserId, assignee_id: assigneeId || null, due_at,
     });
-    if (error) {
-      console.error('Insert error:', (error as any)?.message, (error as any)?.details);
-      setErr((error as any)?.message ?? 'Insert failed');
-      await loadTasks();
-    } else {
-      setErr(null);
-      notify('Task added');
-    }
+    if (error) { console.error('Insert error:', (error as any)?.message, (error as any)?.details); setErr((error as any)?.message ?? 'Insert failed'); await loadTasks(); }
+    else { setErr(null); notify('Task added'); }
   }
 
   async function toggleDone(task: Task) {
@@ -201,18 +171,14 @@ export default function Page() {
     const prev = tasks;
     setTasks(prev.map(x => x.id === task.id ? { ...x, done: next } : x));
     const { error } = await supabase.from('tasks').update({ done: next }).eq('id', task.id);
-    if (error) { setErr(error.message); setTasks(prev); }
-    else { setErr(null); notify(next ? 'Task completed' : 'Task re-opened'); }
+    if (error) { setErr(error.message); setTasks(prev); } else { setErr(null); notify(next ? 'Task completed' : 'Task re-opened'); }
   }
-
   async function remove(task: Task) {
     const prev = tasks;
     setTasks(prev.filter(x => x.id !== task.id));
     const { error } = await supabase.from('tasks').delete().eq('id', task.id);
-    if (error) { setErr(error.message); setTasks(prev); }
-    else { setErr(null); notify('Task deleted'); }
+    if (error) { setErr(error.message); setTasks(prev); } else { setErr(null); notify('Task deleted'); }
   }
-
   async function clearCompleted() {
     const doneIds = tasks.filter(t => t.done).map(t => t.id);
     if (!doneIds.length) return;
@@ -239,15 +205,9 @@ export default function Page() {
     setCommentText('');
 
     const { error } = await supabase.from('comments').insert({
-      task_id: openCommentsFor.id,
-      user_id: sessionUserId,
-      content,
+      task_id: openCommentsFor.id, user_id: sessionUserId, content,
     });
-    if (error) {
-      console.error('Comment insert error:', (error as any)?.message, (error as any)?.details);
-      setErr((error as any)?.message ?? 'Comment failed');
-      await loadComments(openCommentsFor.id);
-    }
+    if (error) { console.error('Comment insert error:', (error as any)?.message, (error as any)?.details); setErr((error as any)?.message ?? 'Comment failed'); await loadComments(openCommentsFor.id); }
   }
 
   const filtered = useMemo(() => {
@@ -259,13 +219,12 @@ export default function Page() {
     });
   }, [tasks, filter, sessionUserId]);
 
-  // sign-in prompt if no session
   if (sessionUserId === null && !loading) {
     return (
       <main className="min-h-dvh grid place-items-center bg-black text-white p-6">
         <div className="text-center">
           <h1 className="text-2xl font-semibold mb-2">Task Lite</h1>
-        <p className="text-zinc-400 mb-4">Please sign in to continue.</p>
+          <p className="text-zinc-400 mb-4">Please sign in to continue.</p>
           <a href="/login" className="rounded-xl border border-white/20 px-4 py-2 hover:bg-white/10">Go to Login</a>
         </div>
       </main>
@@ -299,68 +258,57 @@ export default function Page() {
         <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.08)]">
           <div className="h-[2px] w-full bg-gradient-to-r from-cyan-400/60 via-fuchsia-400/60 to-cyan-400/60" />
           <div className="p-5 sm:p-6 overflow-x-hidden">
-            {/* form: fixed layout */}
-            <form
-  onSubmit={addTask}
-  className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-stretch"
->
-  {/* title */}
-  <input
-    value={title}
-    onChange={e => setTitle(e.target.value)}
-    placeholder="Task title"
-    className="sm:col-span-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
-  />
+            {/* FORM: two-row layout on sm+ */}
+            <form onSubmit={addTask} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+              {/* Row 1 */}
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Task title"
+                className="sm:col-span-6 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
+              />
+              <input
+                type="datetime-local"
+                value={dueLocal}
+                onChange={e => setDueLocal(e.target.value)}
+                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
+              />
+              <select
+                value={assigneeId}
+                onChange={e => setAssigneeId(e.target.value)}
+                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
+              >
+                <option value="">Unassigned</option>
+                {profiles.map(p => (
+                  <option key={p.id} value={p.id}>{p.email ?? p.id}</option>
+                ))}
+              </select>
 
-  {/* due date */}
-  <input
-    type="datetime-local"
-    value={dueLocal}
-    onChange={e => setDueLocal(e.target.value)}
-    className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
-  />
+              {/* Row 2: Actions, full width, right-aligned */}
+              <div className="sm:col-span-12 flex justify-end gap-2">
+                <input
+                  id="attach"
+                  type="file"
+                  onChange={e => setFile(e.target.files?.[0] ?? null)}
+                  className="sr-only"
+                />
+                <label
+                  htmlFor="attach"
+                  className="rounded-2xl px-4 py-3 border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10 cursor-pointer text-sm whitespace-nowrap"
+                  title={file ? `Selected: ${file.name}` : 'Attach file'}
+                >
+                  {file ? 'Attached ✓' : 'Attach'}
+                </label>
 
-  {/* assignee */}
-  <select
-    value={assigneeId}
-    onChange={e => setAssigneeId(e.target.value)}
-    className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
-  >
-    <option value="">Unassigned</option>
-    {profiles.map(p => (
-      <option key={p.id} value={p.id}>{p.email ?? p.id}</option>
-    ))}
-  </select>
-
-  {/* actions: give 2 cols; prevent shrink; right-align */}
-  <div className="sm:col-span-2 flex justify-end gap-2 shrink-0 min-w-fit">
-    {/* hidden file input */}
-    <input
-      id="attach"
-      type="file"
-      onChange={e => setFile(e.target.files?.[0] ?? null)}
-      className="sr-only"
-    />
-    <label
-      htmlFor="attach"
-      className="rounded-2xl px-4 py-3 border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10 cursor-pointer text-sm whitespace-nowrap"
-      title={file ? `Selected: ${file.name}` : 'Attach file'}
-    >
-      {file ? 'Attached ✓' : 'Attach'}
-    </label>
-
-    <button
-      className="rounded-2xl px-5 py-3 bg-white text-black font-medium hover:opacity-90 active:opacity-80 whitespace-nowrap"
-    >
-      Add
-    </button>
-  </div>
-</form>
-
+                <button className="rounded-2xl px-5 py-3 bg-white text-black font-medium hover:opacity-90 active:opacity-80 whitespace-nowrap">
+                  Add
+                </button>
+              </div>
+            </form>
 
             {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
 
-            {/* controls row */}
+            {/* controls */}
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <div className="inline-flex rounded-2xl border border-white/10 bg-white/5 p-1">
                 {(['all','active','done','assignedToMe'] as Filter[]).map(f => (
