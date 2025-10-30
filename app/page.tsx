@@ -16,7 +16,6 @@ type Task = {
 
 type Profile = { id: string; email: string | null };
 type Comment = { id: string; task_id: string; user_id: string; content: string; created_at: string };
-
 type Filter = 'all' | 'active' | 'done' | 'assignedToMe';
 
 const BUCKET = 'attachments'; // change to 'attahcments' if your bucket name is misspelled
@@ -27,13 +26,13 @@ export default function Page() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState('');
   const [assigneeId, setAssigneeId] = useState<string | ''>('');
-  const [dueLocal, setDueLocal] = useState<string>(''); // HTML datetime-local value
+  const [dueLocal, setDueLocal] = useState<string>(''); // HTML datetime-local
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
 
-  // comments drawer state
+  // comments drawer
   const [openCommentsFor, setOpenCommentsFor] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState('');
@@ -42,7 +41,7 @@ export default function Page() {
   const tasksChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const commentsChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // --- helpers ---
+  // ---- helpers ----
   function notify(msg: string) {
     try { if (Notification?.permission === 'granted') new Notification(msg); } catch {}
   }
@@ -50,11 +49,9 @@ export default function Page() {
     try { return new Date(d).toLocaleString(); } catch { return d; }
   }
   function toISOFromLocal(dl: string): string | null {
-    // HTML datetime-local is local time without TZ; convert to ISO
     if (!dl) return null;
     const dt = new Date(dl);
-    if (Number.isNaN(dt.getTime())) return null;
-    return dt.toISOString();
+    return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
   }
 
   // session gate
@@ -84,29 +81,25 @@ export default function Page() {
     setLoading(false);
   }
 
-  // initial data + realtime
+  // init data + realtime + notifications
   useEffect(() => {
     if (!sessionUserId) return;
     (async () => {
       await Promise.all([loadProfiles(), loadTasks()]);
-
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
       }
-
       const ch = supabase
-        .channel('tasks-rt-v3')
+        .channel('tasks-rt-v4')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, async () => { await loadTasks(); })
         .subscribe();
       tasksChannelRef.current = ch;
     })();
 
-    return () => {
-      if (tasksChannelRef.current) supabase.removeChannel(tasksChannelRef.current);
-    };
+    return () => { if (tasksChannelRef.current) supabase.removeChannel(tasksChannelRef.current); };
   }, [sessionUserId]);
 
-  // comments loader + realtime for the open task
+  // comments loader + realtime for open task
   async function loadComments(taskId: string) {
     setCommentsLoading(true);
     const { data, error } = await supabase
@@ -148,7 +141,7 @@ export default function Page() {
     };
   }, [openCommentsFor]);
 
-  // actions
+  // ---- actions ----
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
     if (!sessionUserId) return;
@@ -194,7 +187,6 @@ export default function Page() {
       due_at,
     });
     if (error) {
-      // eslint-disable-next-line no-console
       console.error('Insert error:', (error as any)?.message, (error as any)?.details);
       setErr((error as any)?.message ?? 'Insert failed');
       await loadTasks();
@@ -236,7 +228,6 @@ export default function Page() {
     const content = commentText.trim();
     if (!content) return;
 
-    // optimistic
     const tmp: Comment = {
       id: crypto.randomUUID(),
       task_id: openCommentsFor.id,
@@ -253,7 +244,6 @@ export default function Page() {
       content,
     });
     if (error) {
-      // eslint-disable-next-line no-console
       console.error('Comment insert error:', (error as any)?.message, (error as any)?.details);
       setErr((error as any)?.message ?? 'Comment failed');
       await loadComments(openCommentsFor.id);
@@ -269,12 +259,13 @@ export default function Page() {
     });
   }, [tasks, filter, sessionUserId]);
 
+  // sign-in prompt if no session
   if (sessionUserId === null && !loading) {
     return (
       <main className="min-h-dvh grid place-items-center bg-black text-white p-6">
         <div className="text-center">
           <h1 className="text-2xl font-semibold mb-2">Task Lite</h1>
-          <p className="text-zinc-400 mb-4">Please sign in to continue.</p>
+        <p className="text-zinc-400 mb-4">Please sign in to continue.</p>
           <a href="/login" className="rounded-xl border border-white/20 px-4 py-2 hover:bg-white/10">Go to Login</a>
         </div>
       </main>
@@ -291,7 +282,9 @@ export default function Page() {
         {/* header */}
         <div className="mb-6 flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-fuchsia-500 animate-pulse" />
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Task <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-400">Lite</span></h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+            Task <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-400">Lite</span>
+          </h1>
           <div className="ml-auto flex items-center gap-3 text-xs text-zinc-400">
             <button
               onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }}
@@ -305,14 +298,15 @@ export default function Page() {
         {/* card */}
         <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.08)]">
           <div className="h-[2px] w-full bg-gradient-to-r from-cyan-400/60 via-fuchsia-400/60 to-cyan-400/60" />
-          <div className="p-5 sm:p-6">
-            {/* form */}
+          <div className="p-5 sm:p-6 overflow-x-hidden">
+            {/* form: fixed layout */}
             <form onSubmit={addTask} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+              {/* title */}
               <input
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="Task title"
-                className="sm:col-span-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30"
+                className="sm:col-span-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0"
               />
 
               {/* due date */}
@@ -320,30 +314,38 @@ export default function Page() {
                 type="datetime-local"
                 value={dueLocal}
                 onChange={e => setDueLocal(e.target.value)}
-                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30"
+                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0"
               />
 
               {/* assignee */}
               <select
                 value={assigneeId}
                 onChange={e => setAssigneeId(e.target.value)}
-                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30"
+                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0"
               >
                 <option value="">Unassigned</option>
                 {profiles.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.email ?? p.id}
-                  </option>
+                  <option key={p.id} value={p.id}>{p.email ?? p.id}</option>
                 ))}
               </select>
 
-              <div className="sm:col-span-2 flex items-center gap-2">
+              {/* actions (attach + add) */}
+              <div className="sm:col-span-1 flex sm:justify-end gap-2">
                 <input
+                  id="attach"
                   type="file"
                   onChange={e => setFile(e.target.files?.[0] ?? null)}
-                  className="flex-1 text-xs file:mr-3 file:px-3 file:py-1.5 file:rounded-xl file:border file:border-zinc-700 file:bg-zinc-900 file:text-zinc-200 file:hover:bg-zinc-800"
+                  className="sr-only"
                 />
-                <button className="rounded-2xl px-5 py-3 bg-white text-black font-medium hover:opacity-90 active:opacity-80">
+                <label
+                  htmlFor="attach"
+                  className="rounded-2xl px-4 py-3 border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10 cursor-pointer text-sm whitespace-nowrap"
+                  title={file ? `Selected: ${file.name}` : 'Attach file'}
+                >
+                  {file ? 'Attached ✓' : 'Attach'}
+                </label>
+
+                <button className="rounded-2xl px-5 py-3 bg-white text-black font-medium hover:opacity-90 active:opacity-80 whitespace-nowrap">
                   Add
                 </button>
               </div>
@@ -351,23 +353,25 @@ export default function Page() {
 
             {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
 
-            {/* controls */}
-            <div className="mt-5 flex flex-col sm:flex-row sm:items-center gap-3">
+            {/* controls row */}
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               <div className="inline-flex rounded-2xl border border-white/10 bg-white/5 p-1">
                 {(['all','active','done','assignedToMe'] as Filter[]).map(f => (
                   <button
                     key={f}
                     onClick={() => setFilter(f)}
                     className={`capitalize px-3 py-1.5 rounded-xl text-sm transition ${
-                      filter === f ? 'bg-gradient-to-r from-cyan-400/20 to-fuchsia-400/20 text-zinc-50 border border-white/10' : 'text-zinc-400 hover:text-zinc-200'
+                      filter === f
+                        ? 'bg-gradient-to-r from-cyan-400/20 to-fuchsia-400/20 text-zinc-50 border border-white/10'
+                        : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    {f === 'assignedToMe' ? 'assigned to me' : f}
+                    {f === 'assignedToMe' ? 'Assigned To Me' : f}
                   </button>
                 ))}
               </div>
 
-              <div className="sm:ml-auto flex items-center gap-3">
+              <div className="ml-auto flex flex-wrap items-center gap-3">
                 <span className="text-sm text-zinc-400">
                   {tasks.filter(t => !t.done).length} remaining
                 </span>
@@ -439,9 +443,7 @@ export default function Page() {
       {/* COMMENTS DRAWER */}
       {openCommentsFor && (
         <div className="fixed inset-0 z-50">
-          {/* backdrop */}
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpenCommentsFor(null)} />
-          {/* panel */}
           <div className="absolute right-0 top-0 h-full w-full sm:w-[28rem] bg-zinc-950 border-l border-white/10 shadow-2xl p-5 sm:p-6 overflow-y-auto">
             <div className="flex items-start gap-3">
               <h2 className="text-lg font-semibold">Comments</h2>
@@ -456,7 +458,6 @@ export default function Page() {
               </div>
             )}
 
-            {/* add comment */}
             <form onSubmit={addComment} className="mt-4 flex gap-2">
               <input
                 value={commentText}
@@ -464,10 +465,11 @@ export default function Page() {
                 placeholder="Write a comment…"
                 className="flex-1 rounded-xl bg-zinc-900/80 border border-zinc-800 px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-400/30"
               />
-              <button className="rounded-xl px-4 py-2 bg-white text-black font-medium hover:opacity-90 active:opacity-80">Send</button>
+              <button className="rounded-xl px-4 py-2 bg-white text-black font-medium hover:opacity-90 active:opacity-80">
+                Send
+              </button>
             </form>
 
-            {/* list */}
             <div className="mt-4">
               {commentsLoading ? (
                 <p className="text-zinc-400">Loading comments…</p>
