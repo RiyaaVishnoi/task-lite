@@ -300,56 +300,63 @@ export default function Page() {
           <div className="h-[2px] w-full bg-gradient-to-r from-cyan-400/60 via-fuchsia-400/60 to-cyan-400/60" />
           <div className="p-5 sm:p-6 overflow-x-hidden">
             {/* form: fixed layout */}
-            <form onSubmit={addTask} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              {/* title */}
-              <input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Task title"
-                className="sm:col-span-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0"
-              />
+            <form
+  onSubmit={addTask}
+  className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-stretch"
+>
+  {/* title */}
+  <input
+    value={title}
+    onChange={e => setTitle(e.target.value)}
+    placeholder="Task title"
+    className="sm:col-span-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
+  />
 
-              {/* due date */}
-              <input
-                type="datetime-local"
-                value={dueLocal}
-                onChange={e => setDueLocal(e.target.value)}
-                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0"
-              />
+  {/* due date */}
+  <input
+    type="datetime-local"
+    value={dueLocal}
+    onChange={e => setDueLocal(e.target.value)}
+    className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
+  />
 
-              {/* assignee */}
-              <select
-                value={assigneeId}
-                onChange={e => setAssigneeId(e.target.value)}
-                className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0"
-              >
-                <option value="">Unassigned</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.email ?? p.id}</option>
-                ))}
-              </select>
+  {/* assignee */}
+  <select
+    value={assigneeId}
+    onChange={e => setAssigneeId(e.target.value)}
+    className="sm:col-span-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 px-4 py-3 outline-none focus:ring-2 focus:ring-cyan-400/30 min-w-0 w-full"
+  >
+    <option value="">Unassigned</option>
+    {profiles.map(p => (
+      <option key={p.id} value={p.id}>{p.email ?? p.id}</option>
+    ))}
+  </select>
 
-              {/* actions (attach + add) */}
-              <div className="sm:col-span-1 flex sm:justify-end gap-2">
-                <input
-                  id="attach"
-                  type="file"
-                  onChange={e => setFile(e.target.files?.[0] ?? null)}
-                  className="sr-only"
-                />
-                <label
-                  htmlFor="attach"
-                  className="rounded-2xl px-4 py-3 border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10 cursor-pointer text-sm whitespace-nowrap"
-                  title={file ? `Selected: ${file.name}` : 'Attach file'}
-                >
-                  {file ? 'Attached ✓' : 'Attach'}
-                </label>
+  {/* actions: give 2 cols; prevent shrink; right-align */}
+  <div className="sm:col-span-2 flex justify-end gap-2 shrink-0 min-w-fit">
+    {/* hidden file input */}
+    <input
+      id="attach"
+      type="file"
+      onChange={e => setFile(e.target.files?.[0] ?? null)}
+      className="sr-only"
+    />
+    <label
+      htmlFor="attach"
+      className="rounded-2xl px-4 py-3 border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10 cursor-pointer text-sm whitespace-nowrap"
+      title={file ? `Selected: ${file.name}` : 'Attach file'}
+    >
+      {file ? 'Attached ✓' : 'Attach'}
+    </label>
 
-                <button className="rounded-2xl px-5 py-3 bg-white text-black font-medium hover:opacity-90 active:opacity-80 whitespace-nowrap">
-                  Add
-                </button>
-              </div>
-            </form>
+    <button
+      className="rounded-2xl px-5 py-3 bg-white text-black font-medium hover:opacity-90 active:opacity-80 whitespace-nowrap"
+    >
+      Add
+    </button>
+  </div>
+</form>
+
 
             {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
 
